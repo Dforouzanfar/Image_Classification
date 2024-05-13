@@ -89,7 +89,7 @@ def train(model: torch.nn.Module,
           optimizer,
           loss_fn: torch.nn.Module = nn.CrossEntropyLoss(),
           epochs: int = 5,
-          device=device):
+          device=None):
 
   # 2. Create empty results dictionary
   results = {"train_loss": [],
@@ -158,7 +158,7 @@ def pred_and_plot_image(model: torch.nn.Module,
                         image_path: str,
                         class_names: List[str] = None,
                         transform=None,
-                        device=device):
+                        device=None):
   """Makes a prediction on a target image with a trained model and plots the image and prediction."""
   # Load in the image
   target_image = torchvision.io.read_image(str(image_path)).type(torch.float32)
