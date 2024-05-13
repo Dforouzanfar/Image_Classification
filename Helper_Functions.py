@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 from typing import Tuple, Dict, List
+import os
 
 # Create train_step()
 def train_step(model: torch.nn.Module,
@@ -104,3 +105,8 @@ def plot_loss_curves(results: Dict[str, List[float]]):
   plt.title("Accuracy")
   plt.xlabel("Epochs")
   plt.legend()
+
+def walk_through_dir(dir_path):
+  """Walks through dir_path returning its contents."""
+  for dirpath, dirnames, filenames in os.walk(dir_path):
+    print(f"There are {len(dirnames)} directories and {len(filenames)} images in '{dirpath}'.")
