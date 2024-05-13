@@ -69,7 +69,7 @@ def train(model: torch.nn.Module,
                                        device=device)
 
     # 4. Print out what's happening
-    print(f"Epoch: {epoch} | Train loss: {train_loss:.4f} | Train acc: {train_acc:.4f}")
+    print(f"Epoch: {epoch+1} | Train loss: {train_loss:.4f} | Train acc: {train_acc:.4f}")
 
     # 5. Update results dictionary
     results["train_loss"].append(train_loss)
@@ -110,3 +110,46 @@ def walk_through_dir(dir_path):
   """Walks through dir_path returning its contents."""
   for dirpath, dirnames, filenames in os.walk(dir_path):
     print(f"There are {len(dirnames)} directories and {len(filenames)} images in '{dirpath}'.")
+
+def pred_and_plot_image(model: torch.nn.Module,
+                        image_path: str,
+                        class_names: List[str] = None,
+                        transform=None,
+                        device=device):
+  """Makes a prediction on a target image with a trained model and plots the image and prediction."""
+  # Load in the image
+  target_image = torchvision.io.read_image(str(image_path)).type(torch.float32)
+
+  # Divide the image pixel values by 255 to get them between [0, 1]
+  target_image = target_image / 255.
+
+  # Transform if necessary
+  if transform:
+    target_image = transform(target_image)
+
+  # Make sure the model is on the target device
+  model.to(device)
+
+  # Turn on eval/inference mode and make a prediction
+  model.eval()
+  with torch.inference_mode():
+    # Add an extra dimension to the image (this is the batch dimension, e.g. our model will predict on batches of 1x image)
+    target_image = target_image.unsqueeze(0)
+
+    # Make a prediction on the image with an extra dimension
+    target_image_pred = model(target_image.to(device)) # make sure the target image is on the right device
+
+  # Convert logits -> prediction probabilities
+  target_image_pred_probs = torch.softmax(target_image_pred, dim=1)
+
+  # Convert predction probabilities -> prediction labels
+  target_image_pred_label = torch.argmax(target_image_pred_probs, dim=1)
+
+  # Plot the image alongside the prediction and prediction probability
+  plt.imshow(target_image.squeeze().permute(1, 2, 0)) # remove batch dimension and rearrange shape to be HWC
+  if class_names:
+    title = f"Pred: {class_names[target_image_pred_label.cpu()]} | Prob: {target_image_pred_probs.max().cpu():.3f}"
+  else:
+    title = f"Pred: {target_image_pred_label} | Prob: {target_image_pred_probs.max().cpu():.3f}"
+  plt.title(title)
+  plt.axis(False)
