@@ -5,6 +5,7 @@ from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 from typing import Tuple, Dict, List
 import os
+import torchvision
 
 # Create train_step()
 def train_step(model: torch.nn.Module,
