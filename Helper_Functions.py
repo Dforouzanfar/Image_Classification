@@ -52,7 +52,7 @@ def train_step(model: torch.nn.Module,
 def test_step(model: torch.nn.Module,
               dataloader: torch.utils.data.DataLoader,
               loss_fn: torch.nn.Module,
-              device=device):
+              device=None):
   # Put model in eval mode
   model.eval()
 
