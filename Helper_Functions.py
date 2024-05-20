@@ -66,7 +66,7 @@ def train_fn(model,
              test_dataloader,
              fold_num,
              # model_type,
-             optimizer_type,
+             optimizer,
              # learning_rate: List,
              num_epochs = 40,
              writer = None,
@@ -167,8 +167,8 @@ def train_fn(model,
       results["test_accuracy"].append(test_acc)
 
     if writer:
-      writer.add_scalars(f'{model_type}/{optimizer_type}LR_{learning_rate}/Fold{fold_num}/Loss', {'train':train_loss, 'test':test_loss} , epoch)
-      writer.add_scalars(f'{model_type}/{optimizer_type}/LR_{learning_rate}/Fold{fold_num}/ZeroOneLoss', {'train':train_ZOL, 'test':test_ZOL} , epoch)
-      writer.add_scalars(f'{model_type}/{optimizer_type}/LR_{learning_rate}/Fold{fold_num}/Accuracy', {'train':train_acc, 'test':test_acc} , epoch)
+      writer.add_scalars(f'{model_type}/{optimizer}LR_{learning_rate}/Fold{fold_num}/Loss', {'train':train_loss, 'test':test_loss} , epoch)
+      writer.add_scalars(f'{model_type}/{optimizer}/LR_{learning_rate}/Fold{fold_num}/ZeroOneLoss', {'train':train_ZOL, 'test':test_ZOL} , epoch)
+      writer.add_scalars(f'{model_type}/{optimizer}/LR_{learning_rate}/Fold{fold_num}/Accuracy', {'train':train_acc, 'test':test_acc} , epoch)
 
   return model, results
