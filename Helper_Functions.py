@@ -1,199 +1,171 @@
+import os
+import random
+import zipfile
+import requests
+from pathlib import Path
+from typing import Tuple, Dict, List
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+from PIL import Image
+from timeit import default_timer as timer
+from tqdm.auto import tqdm
 import torch
 from torch import nn
-from torch.utils.data import DataLoader
-from tqdm.auto import tqdm
-import matplotlib.pyplot as plt
-from typing import Tuple, Dict, List
-import os
 import torchvision
+from torchvision.transforms import v2
+from torchvision import datasets, transforms
+from torch.utils.data import DataLoader, Subset
+from torch.utils.tensorboard import SummaryWriter
+from sklearn.model_selection import StratifiedKFold
 
-# Create train_step()
-def train_step(model: torch.nn.Module,
-               dataloader: torch.utils.data.DataLoader,
-               loss_fn: torch.nn.Module,
-               optimizer:torch.optim.Optimizer,
-               device=None):
-  # Put the model in train mode
-  model.train()
-
-  # Setup train loss and train accuracy values
-  train_loss, train_acc = 0, 0
-
-  # Loop through data loader data batches
-  for batch, (X, y) in enumerate(dataloader):
-    # Send data to the target device
-    X, y = X.to(device), y.to(device)
-
-    # 1. Forward pass
-    y_pred = model(X) # output model logits
-
-    # 2. Calculate the loss
-    loss = loss_fn(y_pred, y)
-    train_loss += loss.item()
-
-    # 3. Optimizer zero grad
-    optimizer.zero_grad()
-
-    # 4. Loss backward
-    loss.backward()
-
-    # 5. Optimizer step
-    optimizer.step()
-
-    # Calculate accuracy metric
-    y_pred_class = torch.argmax(torch.softmax(y_pred, dim=1), dim=1)
-    train_acc += (y_pred_class==y).sum().item()/len(y_pred)
-
-  # Adjust metrics to get average loss and accuracy per batch
-  train_loss = train_loss / len(dataloader)
-  train_acc = train_acc / len(dataloader)
-  return train_loss, train_acc
-
-# Create a test step
-def test_step(model: torch.nn.Module,
-              dataloader: torch.utils.data.DataLoader,
-              loss_fn: torch.nn.Module,
-              device=None):
-  # Put model in eval mode
-  model.eval()
-
-  # Setup test loss and test accuracy values
-  test_loss, test_acc = 0,  0
-
-  # Turn on inference mode
-  with torch.inference_mode():
-    # Loop through DataLoader batches
-    for batch, (X, y) in enumerate(dataloader):
-      # Send data to the target device
-      X, y = X.to(device), y.to(device)
-
-      # 1. Forward pass
-      test_pred_logits = model(X)
-
-      # 2. Calculate the loss
-      loss = loss_fn(test_pred_logits, y)
-      test_loss += loss.item()
-
-      # Calculate the accuracy
-      test_pred_labels = test_pred_logits.argmax(dim=1)
-      test_acc += ((test_pred_labels == y).sum().item()/len(test_pred_labels))
-
-  # Adjust metrics to get average loss and accuracy per batch
-  test_loss = test_loss / len(dataloader)
-  test_acc = test_acc / len(dataloader)
-  return test_loss, test_acc
-
-# 1. Create a train function that takes in various model parameters + optimizer + dataloaders + loss function
-def train(model: torch.nn.Module,
-          train_dataloader,
-          test_dataloader,
-          optimizer,
-          loss_fn: torch.nn.Module = nn.CrossEntropyLoss(),
-          epochs: int = 5,
-          device=None):
-
-  # 2. Create empty results dictionary
-  results = {"train_loss": [],
-             "train_acc": [],
-             "test_loss": [],
-             "test_acc": []}
-
-  # 3. Loop through training and testing steps for a number of epochs
-  for epoch in tqdm(range(epochs)):
-    train_loss, train_acc = train_step(model=model,
-                                       dataloader=train_dataloader,
-                                       loss_fn=loss_fn,
-                                       optimizer=optimizer,
-                                       device=device)
-    test_loss, test_acc = test_step(model=model,
-                                    dataloader=test_dataloader,
-                                    loss_fn=loss_fn,
-                                    device=device)
-
-    # 4. Print out what's happening
-    print(f"Epoch: {epoch} | Train loss: {train_loss:.4f} | Train acc: {train_acc:.4f} | Test loss: {test_loss:.4f} | Test acc: {test_acc:.4f}")
-
-    # 5. Update results dictionary
-    results["train_loss"].append(train_loss)
-    results["train_acc"].append(train_acc)
-    results["test_loss"].append(test_loss)
-    results["test_acc"].append(test_acc)
-
-  # 6. Return the filled results at the end of the epochs
-  return results
-
-def plot_loss_curves(results: Dict[str, List[float]]):
-  """Plots training curves of a results dictionary."""
-  # Get the loss values of the results dictionary(training and test)
-  loss = results["train_loss"]
-
-  # Get the accuracy values of the results dictionary (training and test)
-  accuracy = results["train_acc"]
-
-  # Figure out how mnay epochs there were
-  epochs = range(len(results["train_loss"]))
-
-  # Setup a plot
-  plt.figure(figsize=(15, 7))
-
-  # Plot the loss
-  plt.subplot(1, 2, 1)
-  plt.plot(epochs, loss, label="train_loss")
-  plt.title("Loss")
-  plt.xlabel("Epochs")
-  plt.legend()
-
-  # Plot the accuracy
-  plt.subplot(1, 2, 2)
-  plt.plot(epochs, accuracy, label="train_accuracy")
-  plt.title("Accuracy")
-  plt.xlabel("Epochs")
-  plt.legend()
 
 def walk_through_dir(dir_path):
   """Walks through dir_path returning its contents."""
   for dirpath, dirnames, filenames in os.walk(dir_path):
     print(f"There are {len(dirnames)} directories and {len(filenames)} images in '{dirpath}'.")
 
-def pred_and_plot_image(model: torch.nn.Module,
-                        image_path: str,
-                        class_names: List[str] = None,
-                        transform=None,
-                        device=None):
-  """Makes a prediction on a target image with a trained model and plots the image and prediction."""
-  # Load in the image
-  target_image = torchvision.io.read_image(str(image_path)).type(torch.float32)
+# Use ImageFolder to create dataset(s)
+def ImageFolder_data(transform, dir):
+  ImageFolder = datasets.ImageFolder(root=dir, transform=transform)
 
-  # Divide the image pixel values by 255 to get them between [0, 1]
-  target_image = target_image / 255.
+  return ImageFolder
 
-  # Transform if necessary
-  if transform:
-    target_image = transform(target_image)
+def create_dataloader(dataset, indices, BATCH_SIZE=32, NUM_WORKERS=None):
+  if NUM_WORKERS is None:
+    NUM_WORKERS = torch.cuda.device_count() if torch.cuda.is_available() else os.cpu_count()
 
-  # Make sure the model is on the target device
+  subset = Subset(dataset, indices)
+  dataloader = DataLoader(dataset=subset, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, shuffle=True)
+  return dataloader
+
+
+def zero_one_loss_fn(output, target):
+  loss = (output != target).to(torch.float32).mean()
+  return loss
+
+
+def SaveModel(model, name):
+  F = MODEL_PATH/name
+  torch.save(obj=model, f=f"{F}.pt")
+  print(f"Saving: {name}")
+
+
+def loadModel(name):
+  F = MODEL_PATH/name
+  model = torch.load(f=f"{F}.pt")
   model.to(device)
-
-  # Turn on eval/inference mode and make a prediction
   model.eval()
-  with torch.inference_mode():
-    # Add an extra dimension to the image (this is the batch dimension, e.g. our model will predict on batches of 1x image)
-    target_image = target_image.unsqueeze(0)
+  print(f"Loading: {name}")
+  return model
 
-    # Make a prediction on the image with an extra dimension
-    target_image_pred = model(target_image.to(device)) # make sure the target image is on the right device
+# 1. Create a train function that takes in various model parameters + optimizer + dataloaders + loss function and measures the BCE
+def train_fn(model,
+             train_dataloader,
+             test_dataloader,
+             fold_num,
+             # model_type,
+             optimizer_type,
+             # learning_rate: List,
+             num_epochs = 40,
+             writer = None,
+             loss_fn = nn.BCEWithLogitsLoss()):
 
-  # Convert logits -> prediction probabilities
-  target_image_pred_probs = torch.softmax(target_image_pred, dim=1)
+  # 2. Create empty results dictionary
+  results = {"train_loss": [],
+             "train_ZOL": [],
+             "train_accuracy": [],
+             "test_loss": [],
+             "test_ZOL": [],
+             "test_accuracy": []}
 
-  # Convert predction probabilities -> prediction labels
-  target_image_pred_label = torch.argmax(target_image_pred_probs, dim=1)
+  # 3. Train the model
+  # Loop through training and testing steps for a number of epochs
+  for epoch in tqdm(range(num_epochs)):
 
-  # Plot the image alongside the prediction and prediction probability
-  plt.imshow(target_image.squeeze().permute(1, 2, 0)) # remove batch dimension and rearrange shape to be HWC
-  if class_names:
-    title = f"Pred: {class_names[target_image_pred_label.cpu()]} | Prob: {target_image_pred_probs.max().cpu():.3f}"
-  else:
-    title = f"Pred: {target_image_pred_label} | Prob: {target_image_pred_probs.max().cpu():.3f}"
-  plt.title(title)
-  plt.axis(False)
+    # Put the model in train mode
+    model.train()
+
+    # Setup some variables
+    train_acc, train_loss, train_ZOL = 0, 0, 0
+
+    # Loop through data loader data batches
+    for batch, (X, y) in enumerate(train_dataloader):
+
+      # Send data to the target device
+      X, y = X.to(device), y.to(device).to(torch.float64)
+
+      # 1. Forward pass
+      y_logits = model(X).squeeze().to(torch.float64)
+      y_pred_class = torch.round(torch.sigmoid(y_logits)) # We need to apply sigmoid and then round to convert logits to 0/1
+
+      # 2. Calculate the loss
+      loss = loss_fn(y_logits, y)
+      loss_zero_one = zero_one_loss_fn(y_pred_class, y)
+
+      train_loss += loss
+      train_ZOL += loss_zero_one
+
+      train_acc += (y_pred_class==y).sum().item()/len(y_pred_class)
+
+      # 3. Optimizer zero grad
+      optimizer.zero_grad()
+
+      # 4. Loss backward
+      loss.backward()
+
+      # 5. Optimizer step
+      optimizer.step()
+
+    # Adjust metrics to get average loss and accuracy per batch
+    train_acc = (train_acc / len(train_dataloader)) * 100
+    train_loss /= len(train_dataloader)
+    train_ZOL /= len(train_dataloader)             # Agar jame in o accuracy 1 nemishod * 32 bokon age baz nashod beja 32, 148 bezar
+
+    # Print out what's happening
+    print(f'Train:\nEpoch: ({epoch+1}) | Accuracy: {train_acc:.3f}% | Zero one Loss: {train_ZOL.item():.4f} | Entropy Loss: {train_loss.item():.4f}')
+
+    # Update results dictionary
+    results["train_loss"].append(train_loss.item())
+    results["train_ZOL"].append(train_ZOL.item())
+    results["train_accuracy"].append(train_acc)
+
+    # Test steps
+    # Put model in eval mode
+    model.eval()
+    test_acc, test_loss, test_ZOL = 0, 0, 0
+
+    with torch.inference_mode():
+      # Loop through DataLoader batches
+      for batch, (X, y) in enumerate(test_dataloader):
+        # Send data to the target device
+        X, y = X.to(device), y.to(device).to(torch.float64)
+
+        # 1. Forward pass
+        test_pred_logits = model(X).squeeze().to(torch.float64)
+        test_pred_labels = torch.round(torch.sigmoid(test_pred_logits))
+
+        # 2. Calculate the loss
+        test_loss += loss_fn(test_pred_logits, y)
+        test_ZOL += zero_one_loss_fn(test_pred_labels, y)
+
+        test_acc += (test_pred_labels==y).sum().item()/len(test_pred_labels)
+
+      # Adjust metrics
+      test_acc = (test_acc / len(test_dataloader)) * 100
+      test_loss /= len(test_dataloader)
+      test_ZOL /= len(test_dataloader)
+
+      print(f'Test:\nEpoch: ({epoch+1}) | Accuracy:: {test_acc:.3f}% | Zero one Loss: {test_ZOL.item():.4f} | Entropy Loss: {test_loss.item():.4f}')
+
+      # Update results dictionary
+      results["test_loss"].append(test_loss.item())
+      results["test_ZOL"].append(test_ZOL.item())
+      results["test_accuracy"].append(test_acc)
+
+    if writer:
+      writer.add_scalars(f'{model_type}/{optimizer_type}LR_{learning_rate}/Fold{fold_num}/Loss', {'train':train_loss, 'test':test_loss} , epoch)
+      writer.add_scalars(f'{model_type}/{optimizer_type}/LR_{learning_rate}/Fold{fold_num}/ZeroOneLoss', {'train':train_ZOL, 'test':test_ZOL} , epoch)
+      writer.add_scalars(f'{model_type}/{optimizer_type}/LR_{learning_rate}/Fold{fold_num}/Accuracy', {'train':train_acc, 'test':test_acc} , epoch)
+
+  return model, results
