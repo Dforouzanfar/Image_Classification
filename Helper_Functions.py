@@ -69,7 +69,8 @@ def train_fn(model,
              # learning_rate: List,
              num_epochs = 40,
              writer = None,
-             loss_fn = nn.BCEWithLogitsLoss()):
+             loss_fn = nn.BCEWithLogitsLoss(),
+             device=device):
 
   # 2. Create empty results dictionary
   results = {"train_loss": [],
