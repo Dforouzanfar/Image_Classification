@@ -69,8 +69,9 @@ def train_fn(model,
              # learning_rate: List,
              num_epochs = 40,
              writer = None,
-             loss_fn = nn.BCEWithLogitsLoss(),
-             device=device):
+             loss_fn = nn.BCEWithLogitsLoss()):
+  
+  device = "cuda" if torch.cuda.is_available() else "cpu"
 
   # 2. Create empty results dictionary
   results = {"train_loss": [],
