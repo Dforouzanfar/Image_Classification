@@ -52,6 +52,7 @@ def SaveModel(model, name):
 
 
 def loadModel(name):
+  device = "cuda" if torch.cuda.is_available() else "cpu"
   F = MODEL_PATH/name
   model = torch.load(f=f"{F}.pt")
   model.to(device)
@@ -70,7 +71,7 @@ def train_fn(model,
              num_epochs = 40,
              writer = None,
              loss_fn = nn.BCEWithLogitsLoss()):
-  
+
   device = "cuda" if torch.cuda.is_available() else "cpu"
 
   # 2. Create empty results dictionary
